@@ -1,124 +1,238 @@
-## Laboratorio #4 – REST API Blueprints (Java 21 / Spring Boot 3.3.x)
-# Escuela Colombiana de Ingeniería – Arquitecturas de Software  
+# Laboratorio #4 — REST API Blueprints
+
+**Escuela Colombiana de Ingeniería Julio Garavito**  
+**Curso:** Arquitecturas de Software (ARSW)  
+**Fecha:** 19 de febrero de 2026
 
 ---
 
-## 📋 Requisitos
-- Java 21
-- Maven 3.9+
+## Descripción
 
-## ▶️ Ejecución del proyecto
-```bash
-mvn clean install
-mvn spring-boot:run
-```
-Probar con `curl`:
-```bash
-curl -s http://localhost:8080/blueprints | jq
-curl -s http://localhost:8080/blueprints/john | jq
-curl -s http://localhost:8080/blueprints/john/house | jq
-curl -i -X POST http://localhost:8080/blueprints -H 'Content-Type: application/json' -d '{ "author":"john","name":"kitchen","points":[{"x":1,"y":1},{"x":2,"y":2}] }'
-curl -i -X PUT  http://localhost:8080/blueprints/john/kitchen/points -H 'Content-Type: application/json' -d '{ "x":3,"y":3 }'
-```
-
-> Si deseas activar filtros de puntos (reducción de redundancia, *undersampling*, etc.), implementa nuevas clases que implementen `BlueprintsFilter` y cámbialas por `IdentityFilter` con `@Primary` o usando configuración de Spring.
----
-
-Abrir en navegador:  
-- Swagger UI: [http://localhost:8080/swagger-ui.html](http://localhost:8080/swagger-ui.html)  
-- OpenAPI JSON: [http://localhost:8080/v3/api-docs](http://localhost:8080/v3/api-docs)  
+API REST para gestión de planos (blueprints) desarrollada con **Java 21** y **Spring Boot 3.3.9**. Implementa los cinco niveles de madurez progresiva de una API REST: desde persistencia en memoria hasta HATEOAS, pasando por PostgreSQL, buenas prácticas HTTP, documentación OpenAPI y filtros intercambiables mediante Spring Profiles.
 
 ---
 
-## 🗂️ Estructura de carpetas (arquitectura)
+## Requisitos previos
 
-```
-src/main/java/edu/eci/arsw/blueprints
-  ├── model/         # Entidades de dominio: Blueprint, Point
-  ├── persistence/   # Interfaz + repositorios (InMemory, Postgres)
-  │    └── impl/     # Implementaciones concretas
-  ├── services/      # Lógica de negocio y orquestación
-  ├── filters/       # Filtros de procesamiento (Identity, Redundancy, Undersampling)
-  ├── controllers/   # REST Controllers (BlueprintsAPIController)
-  └── config/        # Configuración (Swagger/OpenAPI, etc.)
-```
-
-> Esta separación sigue el patrón **capas lógicas** (modelo, persistencia, servicios, controladores), facilitando la extensión hacia nuevas tecnologías o fuentes de datos.
+| Herramienta | Versión mínima |
+|---|---|
+| Java (JDK) | 21 |
+| Maven | 3.9+ |
+| Docker Desktop | 4.x (solo para perfil PostgreSQL) |
 
 ---
 
-## 📖 Actividades del laboratorio
+## Ejecución rápida
 
-### 1. Familiarización con el código base
-- Revisa el paquete `model` con las clases `Blueprint` y `Point`.  
-- Entiende la capa `persistence` con `InMemoryBlueprintPersistence`.  
-- Analiza la capa `services` (`BlueprintsServices`) y el controlador `BlueprintsAPIController`.
+### Modo en memoria (sin base de datos)
 
-### 2. Migración a persistencia en PostgreSQL
-- Configura una base de datos PostgreSQL (puedes usar Docker).  
-- Implementa un nuevo repositorio `PostgresBlueprintPersistence` que reemplace la versión en memoria.  
-- Mantén el contrato de la interfaz `BlueprintPersistence`.  
+```powershell
+mvn "spring-boot:run"
+```
 
-### 3. Buenas prácticas de API REST
-- Cambia el path base de los controladores a `/api/v1/blueprints`.  
-- Usa **códigos HTTP** correctos:  
-  - `200 OK` (consultas exitosas).  
-  - `201 Created` (creación).  
-  - `202 Accepted` (actualizaciones).  
-  - `400 Bad Request` (datos inválidos).  
-  - `404 Not Found` (recurso inexistente).  
-- Implementa una clase genérica de respuesta uniforme:
-  ```java
-  public record ApiResponse<T>(int code, String message, T data) {}
-  ```
-  Ejemplo JSON:
-  ```json
-  {
-    "code": 200,
-    "message": "execute ok",
-    "data": { "author": "john", "name": "house", "points": [...] }
+### Modo PostgreSQL
+
+```powershell
+# 1. Levantar contenedor
+docker compose up -d
+
+# 2. Iniciar la aplicación
+mvn "spring-boot:run" "-Dspring-boot.run.profiles=postgres"
+```
+
+### Con filtros de puntos
+
+```powershell
+# Elimina puntos duplicados consecutivos
+mvn "spring-boot:run" "-Dspring-boot.run.profiles=redundancy"
+
+# Conserva 1 de cada 2 puntos
+mvn "spring-boot:run" "-Dspring-boot.run.profiles=undersampling"
+
+# Combinado: PostgreSQL + filtro
+mvn "spring-boot:run" "-Dspring-boot.run.profiles=postgres,redundancy"
+```
+
+---
+
+## URLs de la API
+
+| Recurso | URL |
+|---|---|
+| Swagger UI | http://localhost:8080/swagger-ui.html |
+| OpenAPI JSON | http://localhost:8080/v3/api-docs |
+| Base de la API | http://localhost:8080/api/v1/blueprints |
+
+---
+
+## Endpoints
+
+| Método | Ruta | Descripción | Código exitoso |
+|---|---|---|---|
+| `GET` | `/api/v1/blueprints` | Todos los blueprints | 200 |
+| `GET` | `/api/v1/blueprints/{author}` | Blueprints de un autor | 200 |
+| `GET` | `/api/v1/blueprints/{author}/{name}` | Blueprint específico | 200 |
+| `POST` | `/api/v1/blueprints` | Crear blueprint | 201 |
+| `PUT` | `/api/v1/blueprints/{author}/{name}/points` | Agregar punto | 202 |
+
+### Ejemplo POST
+
+```powershell
+$body = '{"author":"john","name":"house","points":[{"x":10,"y":20},{"x":30,"y":40}]}'
+Invoke-WebRequest "http://localhost:8080/api/v1/blueprints" -Method POST -Body $body -ContentType "application/json" -UseBasicParsing
+```
+
+### Formato de respuesta (todas las rutas)
+
+```json
+{
+  "code": 201,
+  "message": "resource created",
+  "data": { "author": "john", "name": "house", "points": [...] },
+  "_links": {
+    "self":              "http://localhost:8080/api/v1/blueprints/john/house",
+    "add-point":         "http://localhost:8080/api/v1/blueprints/john/house/points",
+    "author-blueprints": "http://localhost:8080/api/v1/blueprints/john",
+    "all-blueprints":    "http://localhost:8080/api/v1/blueprints"
   }
-  ```
-
-### 4. OpenAPI / Swagger
-- Configura `springdoc-openapi` en el proyecto.  
-- Expón documentación automática en `/swagger-ui.html`.  
-- Anota endpoints con `@Operation` y `@ApiResponse`.
-
-### 5. Filtros de *Blueprints*
-- Implementa filtros:
-  - **RedundancyFilter**: elimina puntos duplicados consecutivos.  
-  - **UndersamplingFilter**: conserva 1 de cada 2 puntos.  
-- Activa los filtros mediante perfiles de Spring (`redundancy`, `undersampling`).  
+}
+```
 
 ---
 
-## ✅ Entregables
+## Estructura del proyecto
 
-1. Repositorio en GitHub con:  
-   - Código fuente actualizado.  
-   - Configuración PostgreSQL (`application.yml` o script SQL).  
-   - Swagger/OpenAPI habilitado.  
-   - Clase `ApiResponse<T>` implementada.  
+```
+src/main/java/edu/eci/arsw/blueprints/
+├── config/
+│   └── OpenApiConfig.java            # Metadata OpenAPI: título, contacto, licencia, servidor
+├── controllers/
+│   ├── ApiResponse.java              # Envelope genérico con _links (HATEOAS)
+│   └── BlueprintsAPIController.java  # 5 endpoints REST con anotaciones OpenAPI
+├── filters/
+│   ├── BlueprintsFilter.java         # Interfaz del filtro
+│   ├── IdentityFilter.java           # @Profile("!redundancy & !undersampling")
+│   ├── RedundancyFilter.java         # @Profile("redundancy")
+│   └── UndersamplingFilter.java      # @Profile("undersampling")
+├── model/
+│   ├── Blueprint.java
+│   └── Point.java
+├── persistence/
+│   ├── BlueprintPersistence.java     # Interfaz de persistencia
+│   ├── entity/
+│   │   ├── BlueprintEntity.java      # @Entity JPA
+│   │   └── PointEmbeddable.java      # @Embeddable
+│   └── impl/
+│       ├── BlueprintJpaRepository.java        # Spring Data JPA
+│       ├── InMemoryBlueprintPersistence.java  # @Profile("!postgres")
+│       └── PostgresBlueprintPersistence.java  # @Profile("postgres")
+└── services/
+    └── BlueprintsServices.java       # Aplica el filtro activo en todos los GETs
 
-2. Documentación:  
-   - Informe de laboratorio con instrucciones claras.  
-   - Evidencia de consultas en Swagger UI y evidencia de mensajes en la base de datos.  
-   - Breve explicación de buenas prácticas aplicadas.  
+docs/
+├── 01_familiarizacion_codigo_base.md
+├── 02_migracion_postgresql.md
+├── 03_buenas_practicas_rest.md
+├── 03b_nivel3_hateoas.md
+├── 04_openapi_swagger.md
+└── 05_filtros_blueprints.md
+```
 
 ---
 
-## 📊 Criterios de evaluación
+## Resumen de implementación por punto
 
-| Criterio | Peso |
-|----------|------|
-| Diseño de API (versionamiento, DTOs, ApiResponse) | 25% |
-| Migración a PostgreSQL (repositorio y persistencia correcta) | 25% |
-| Uso correcto de códigos HTTP y control de errores | 20% |
-| Documentación con OpenAPI/Swagger + README | 15% |
-| Pruebas básicas (unitarias o de integración) | 15% |
+### Punto 1 — Familiarización
+Análisis del código base: modelo de dominio, persistencia en memoria, servicios y controlador. Documentado en `docs/01_familiarizacion_codigo_base.md`.
 
-**Bonus**:  
+### Punto 2 — Migración a PostgreSQL
+- Docker Compose con `postgres:16-alpine`.
+- Entidades JPA: `BlueprintEntity` + `PointEmbeddable` (`@ElementCollection(fetch=EAGER)`).
+- `PostgresBlueprintPersistence` activa con `@Profile("postgres")`.
+- Tablas generadas automáticamente por Hibernate (`ddl-auto=update`).
 
-- Imagen de contenedor (`spring-boot:build-image`).  
-- Métricas con Actuator.  
+### Punto 3 — Buenas prácticas REST + HATEOAS (Level 3)
+- Ruta versionada `/api/v1/blueprints`.
+- `ApiResponse<T>`: campos `code`, `message`, `data`, `_links`.
+- Códigos HTTP semánticos: 200, 201, 202, 400, 404, 409.
+- Links hipermedia en cada respuesta (Richardson Level 3).
+
+### Punto 4 — OpenAPI / Swagger
+- `springdoc-openapi-starter-webmvc-ui:2.6.0`.
+- `OpenApiConfig` bean con título, versión, contacto, licencia y URL de servidor.
+- Anotaciones `@Tag`, `@Operation`, `@ApiResponses`, `@Parameter`, `@Schema` en el controlador.
+
+### Punto 5 — Filtros con Spring Profiles
+- `RedundancyFilter`: elimina puntos `(x,y)` duplicados consecutivos.
+- `UndersamplingFilter`: conserva índices pares (1 de cada 2 puntos).
+- `IdentityFilter`: sin transformación (activo por defecto).
+- Los perfiles de persistencia y filtro son combinables: `postgres,redundancy`.
+
+---
+
+## Buenas prácticas aplicadas
+
+| Práctica | Implementación |
+|---|---|
+| Versionamiento de API | Prefijo `/api/v1/` en todas las rutas |
+| Recursos en plural | `/blueprints`, no `/blueprint` |
+| Sub-recursos relacionales | `/blueprints/{author}/{name}/points` |
+| Verbos HTTP correctos | GET (lectura), POST (creación), PUT (actualización) |
+| Códigos de estado semánticos | 200/201/202/400/404/409 según el escenario |
+| Respuesta uniforme | `ApiResponse<T>` en todos los endpoints |
+| HATEOAS Level 3 | Campo `_links` con URLs navegables en cada respuesta |
+| Separación de capas | Modelo → Persistencia → Servicio → Controlador |
+| Inversión de dependencias | El servicio usa `BlueprintsFilter` (interfaz), no la clase concreta |
+| Configuración por entorno | Spring Profiles para persistencia y filtros |
+| Contenerización de BD | Docker Compose para PostgreSQL |
+
+---
+
+## Configuración PostgreSQL
+
+**`docker-compose.yml`**
+```yaml
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: blueprints-db
+    environment:
+      POSTGRES_DB: blueprintsdb
+      POSTGRES_USER: blueprints
+      POSTGRES_PASSWORD: blueprints123
+    ports:
+      - "5432:5432"
+    volumes:
+      - blueprints_data:/var/lib/postgresql/data
+volumes:
+  blueprints_data:
+```
+
+**`application-postgres.properties`**
+```properties
+spring.datasource.url=jdbc:postgresql://localhost:5432/blueprintsdb
+spring.datasource.username=blueprints
+spring.datasource.password=blueprints123
+spring.jpa.hibernate.ddl-auto=update
+spring.jpa.show-sql=true
+```
+
+---
+
+## Ejecutar tests
+
+```powershell
+mvn test
+```
+
+---
+
+## Criterios de evaluación
+
+| Criterio | Peso | Estado |
+|---|---|---|
+| Diseño de API (versionamiento, DTOs, ApiResponse) | 25% | Implementado |
+| Migración a PostgreSQL (repositorio y persistencia correcta) | 25% | Implementado |
+| Uso correcto de códigos HTTP y control de errores | 20% | Implementado |
+| Documentación con OpenAPI/Swagger + README | 15% | Implementado |
+| Pruebas básicas (unitarias o de integración) | 15% | Implementado |  

@@ -1,0 +1,16 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: blueprints-db
+    environment:
+      POSTGRES_DB: blueprintsdb
+      POSTGRES_USER: blueprints
+      POSTGRES_PASSWORD: blueprints123
+    ports:
+      - "5432:5432"
+    volumes:
+      - blueprints_data:/var/lib/postgresql/data
+    restart: unless-stopped
+
+volumes:
+  blueprints_data:
